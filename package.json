@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-servicem8-jobcreation",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "n8n node for creating ServiceM8 jobs with intelligent client/contact deduplication",
   "keywords": [
     "n8n-community-node-package",

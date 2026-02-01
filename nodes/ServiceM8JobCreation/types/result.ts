@@ -54,6 +54,15 @@ export interface ExecutionDebug {
 	reason: string;
 	clientsChecked: number;
 	executionTimeMs: number;
+	// Debug: address data received
+	clientAddressParts?: {
+		street: string;
+		city: string;
+		state: string;
+		postcode: string;
+		country: string;
+	};
+	clientAddress?: string;
 }
 
 export interface ExecutionResult {

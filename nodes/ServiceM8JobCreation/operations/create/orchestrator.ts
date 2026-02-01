@@ -243,6 +243,9 @@ export async function executeJobCreation(
 			reason: actionResult.reason,
 			clientsChecked: actionResult.clientsChecked,
 			executionTimeMs,
+			// Debug: address data received
+			clientAddressParts: input.clientAddressParts,
+			clientAddress: input.clientAddress,
 		},
 		createdRecords,
 	};

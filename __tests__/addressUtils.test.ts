@@ -4,6 +4,7 @@ import {
 	normalizeForMatching,
 	lightNormalize,
 	matchAddresses,
+	parseAddressFromInput,
 	hasAddressContent,
 	isValidAustralianPostcode,
 } from '../nodes/ServiceM8JobCreation/helpers/addressUtils';
@@ -129,6 +130,84 @@ describe('addressUtils', () => {
 				{ address_street: '123 main st', address_city: 'sydney', address_postcode: '2000' },
 			);
 			expect(result).toBe('exact');
+		});
+	});
+
+	describe('parseAddressFromInput', () => {
+		it('should parse address from object format (n8n fixedCollection without multipleValues)', () => {
+			const result = parseAddressFromInput({
+				address: {
+					street: '123 Main St',
+					city: 'Sydney',
+					state: 'NSW',
+					postcode: '2000',
+					country: 'Australia',
+				},
+			});
+			expect(result).toEqual({
+				street: '123 Main St',
+				city: 'Sydney',
+				state: 'NSW',
+				postcode: '2000',
+				country: 'Australia',
+			});
+		});
+
+		it('should parse address from array format (legacy or multipleValues)', () => {
+			const result = parseAddressFromInput({
+				address: [{
+					street: '456 Other Ave',
+					city: 'Melbourne',
+					state: 'VIC',
+					postcode: '3000',
+					country: 'Australia',
+				}],
+			});
+			expect(result).toEqual({
+				street: '456 Other Ave',
+				city: 'Melbourne',
+				state: 'VIC',
+				postcode: '3000',
+				country: 'Australia',
+			});
+		});
+
+		it('should return defaults for undefined input', () => {
+			const result = parseAddressFromInput(undefined);
+			expect(result).toEqual({
+				street: '',
+				city: '',
+				state: '',
+				postcode: '',
+				country: 'Australia',
+			});
+		});
+
+		it('should return defaults for empty object', () => {
+			const result = parseAddressFromInput({});
+			expect(result).toEqual({
+				street: '',
+				city: '',
+				state: '',
+				postcode: '',
+				country: 'Australia',
+			});
+		});
+
+		it('should handle partial address data', () => {
+			const result = parseAddressFromInput({
+				address: {
+					street: '123 Main St',
+					city: 'Sydney',
+				},
+			});
+			expect(result).toEqual({
+				street: '123 Main St',
+				city: 'Sydney',
+				state: '',
+				postcode: '',
+				country: 'Australia',
+			});
 		});
 	});
 

@@ -92,11 +92,17 @@ export function matchAddresses(
 
 /**
  * Parse address parts from a node's fixedCollection input
+ * Note: n8n fixedCollection returns an object (not array) when multipleValues is not set
  */
 export function parseAddressFromInput(
-	addressData: { address?: Array<{ street?: string; city?: string; state?: string; postcode?: string; country?: string }> } | undefined,
+	addressData: {
+		address?: { street?: string; city?: string; state?: string; postcode?: string; country?: string }
+			| Array<{ street?: string; city?: string; state?: string; postcode?: string; country?: string }>
+	} | undefined,
 ): AddressParts {
-	const addr = addressData?.address?.[0];
+	const addressContainer = addressData?.address;
+	// Handle both object and array formats from n8n fixedCollection
+	const addr = Array.isArray(addressContainer) ? addressContainer[0] : addressContainer;
 	return {
 		street: addr?.street || '',
 		city: addr?.city || '',
