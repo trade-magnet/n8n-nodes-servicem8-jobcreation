@@ -1,0 +1,22 @@
+# Source files (only publish dist/)
+nodes/
+credentials/
+__tests__/
+
+# TypeScript source
+*.ts
+!*.d.ts
+
+# Config files
+tsconfig.json
+.eslintrc.js
+jest.config.js
+
+# Development
+.github/
+.gitignore
+coverage/
+
+# IDE
+.idea/
+.vscode/

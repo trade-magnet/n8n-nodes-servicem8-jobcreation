@@ -1,0 +1,66 @@
+{
+  "name": "n8n-nodes-servicem8-jobcreation",
+  "version": "1.0.0",
+  "description": "n8n node for creating ServiceM8 jobs with intelligent client/contact deduplication",
+  "keywords": [
+    "n8n-community-node-package",
+    "servicem8",
+    "job-management",
+    "field-service",
+    "australia"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/trade-magnet/n8n-nodes-servicem8-jobcreation#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/trade-magnet/n8n-nodes-servicem8-jobcreation.git"
+  },
+  "bugs": {
+    "url": "https://github.com/trade-magnet/n8n-nodes-servicem8-jobcreation/issues"
+  },
+  "author": {
+    "name": "Trade Magnet",
+    "url": "https://www.trademagnet.com.au"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "node -e \"require('fs').copyFileSync('nodes/ServiceM8JobCreation/servicem8.svg', 'dist/nodes/ServiceM8JobCreation/servicem8.svg')\"",
+    "deploy": "npm run build && npm run deploy-to-n8n",
+    "deploy-to-n8n": "npm run n8n:clean && npm run n8n:mkdir && npm run n8n:copy && npm run n8n:restart",
+    "n8n:clean": "docker exec --user root n8n-test rm -rf /home/node/.n8n/nodes/node_modules/n8n-nodes-servicem8-jobcreation",
+    "n8n:mkdir": "docker exec n8n-test mkdir -p /home/node/.n8n/nodes/node_modules/n8n-nodes-servicem8-jobcreation",
+    "n8n:copy": "docker cp dist n8n-test:/home/node/.n8n/nodes/node_modules/n8n-nodes-servicem8-jobcreation/dist && docker cp package.json n8n-test:/home/node/.n8n/nodes/node_modules/n8n-nodes-servicem8-jobcreation/",
+    "n8n:restart": "docker restart n8n-test",
+    "dev": "tsc --watch",
+    "lint": "eslint . --ext .ts",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/ServiceM8Api.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/ServiceM8JobCreation/ServiceM8JobCreation.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.50.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "~5.0.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}
