@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-servicem8-jobcreation",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "n8n node for creating ServiceM8 jobs with intelligent client/contact deduplication",
   "keywords": [
     "n8n-community-node-package",
@@ -20,6 +20,7 @@
   },
   "author": {
     "name": "Trade Magnet",
+    "email": "support@trademagnet.com.au",
     "url": "https://www.trademagnet.com.au"
   },
   "main": "dist/index.js",
