@@ -9,11 +9,14 @@ import { serviceM8Request, parseArrayResponse, escapeOData } from '../../helpers
 
 export interface ContactLookupResult {
 	existingContact: ServiceM8Contact | null;
+	allMatchingContacts: ServiceM8Contact[];
 	foundByField: 'email' | 'mobile' | 'phone' | null;
 }
 
 /**
- * Look up an existing contact by email, mobile, or phone
+ * Look up existing contacts by email, mobile, or phone
+ * Returns both the first contact (for backwards compatibility) and all matching contacts
+ * (for finding contacts on clients with matching names)
  */
 export async function lookupContact(
 	context: IExecuteFunctions,
@@ -23,6 +26,7 @@ export async function lookupContact(
 	if (!contactLookupFilter) {
 		return {
 			existingContact: null,
+			allMatchingContacts: [],
 			foundByField: null,
 		};
 	}
@@ -37,6 +41,7 @@ export async function lookupContact(
 
 	return {
 		existingContact: contacts.length > 0 ? contacts[0] : null,
+		allMatchingContacts: contacts,
 		foundByField: contacts.length > 0 ? contactLookupField : null,
 	};
 }

@@ -5,12 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-03
+
+### Fixed
+
+- **Fixed client matching when same email exists on multiple clients**
+  - Now searches ALL contacts with matching email to find one on a client with matching name
+  - Previously only checked the first contact returned, which could be on a different client
+  - Prevents unnecessary duplicate clients when resubmitting with same name + email
+
+### Changed
+
+- **Updated documentation** - ServiceM8 allows duplicate client names (not unique as previously thought)
+
+### Known Limitations
+
+- **`is_individual` field is read-only via API** - ServiceM8 ignores this field when creating/updating clients via API. All clients created via API will have `is_individual=0` (business). This is a ServiceM8 platform limitation.
+
 ## [1.1.0] - 2026-02-02
 
 ### Fixed
 
 - **Client matching simplified to exact name matching** (case-insensitive)
-  - ServiceM8 enforces unique client names, so address matching is no longer needed
   - For individuals: exact name + matching email → use existing; name conflict → create with suffix (e.g., "John Smith 1")
   - For businesses: exact name → use existing, add contact
 - **Improved error handling** - actual ServiceM8 error messages now shown (e.g., "Name must be unique")

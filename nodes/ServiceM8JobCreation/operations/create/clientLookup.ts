@@ -1,7 +1,9 @@
 /**
  * Client Lookup Operations
  * Find and match existing clients with decision logic
- * Uses exact name matching (case-insensitive) since ServiceM8 enforces unique names
+ * Uses exact name matching (case-insensitive)
+ * Note: ServiceM8 allows duplicate client names, so we prefer the client
+ * that already has a matching contact when the email exists
  */
 
 import type { IExecuteFunctions } from 'n8n-workflow';
@@ -16,6 +18,7 @@ import {
 	determineAction,
 	type ActionDecisionResult,
 } from '../../helpers/clientMatcher';
+import { normalizeForMatching } from '../../helpers/addressUtils';
 
 export interface ClientLookupResult {
 	allClients: ServiceM8Client[];
@@ -51,6 +54,11 @@ export async function lookupClients(
 /**
  * Find the best matching client and determine action to take
  * Uses exact name matching only (case-insensitive)
+ *
+ * PRIORITY ORDER:
+ * 1. Search ALL contacts with matching email/phone to find one on a client with matching name
+ *    (This handles duplicate emails - find the contact that belongs to a matching client)
+ * 2. Otherwise, find first client with exact name match
  */
 export function findMatchingClientAndDetermineAction(
 	clientName: string,
@@ -58,14 +66,46 @@ export function findMatchingClientAndDetermineAction(
 	isBusiness: boolean,
 	kind: 'business' | 'person',
 	existingContact: ServiceM8Contact | null,
+	allMatchingContacts: ServiceM8Contact[] = [],
 ): ActionResult {
-	// Find client with exact name match
-	const matchResult = findBestMatchingClient(clientName, allClients);
+	let matchResult: {
+		client: ServiceM8Client | null;
+		matchType: MatchResult;
+		reason: string;
+	};
+
+	// The contact we'll use for action determination (might be different from existingContact)
+	let contactForAction: ServiceM8Contact | null = existingContact;
+
+	// PRIORITY 1: Search ALL matching contacts to find one on a client with matching name
+	// This handles the case where the same email exists on multiple clients
+	if (allMatchingContacts.length > 0) {
+		const normalizedInputName = normalizeForMatching(clientName);
+
+		for (const contact of allMatchingContacts) {
+			const contactClient = allClients.find(c => c.uuid === contact.company_uuid);
+			if (contactClient && normalizeForMatching(contactClient.name) === normalizedInputName) {
+				// Found a contact on a client with matching name - use this one!
+				contactForAction = contact;
+				matchResult = {
+					client: contactClient,
+					matchType: { name: 'exact', address: 'none' },
+					reason: `Exact name match (via existing contact): "${contactClient.name}"`,
+				};
+				break;
+			}
+		}
+	}
+
+	// PRIORITY 2: No contact found on a matching client, use normal name matching
+	if (!matchResult!) {
+		matchResult = findBestMatchingClient(clientName, allClients);
+	}
 
 	// Determine what action to take
 	const actionResult = determineAction({
-		contactExists: existingContact !== null,
-		existingContactClientUuid: existingContact?.company_uuid || null,
+		contactExists: contactForAction !== null,
+		existingContactClientUuid: contactForAction?.company_uuid || null,
 		matchedClient: matchResult.client,
 		matchType: matchResult.matchType,
 		matchReason: matchResult.reason,

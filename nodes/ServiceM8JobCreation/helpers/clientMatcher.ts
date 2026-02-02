@@ -1,7 +1,8 @@
 /**
  * Client Matching Logic
  * Implements exact name matching (case-insensitive) for client deduplication
- * ServiceM8 enforces unique client names, so we match by name only
+ * Note: ServiceM8 allows duplicate client names, so proper deduplication
+ * requires checking both name AND contact email (handled in clientLookup.ts)
  */
 
 import type {
@@ -155,10 +156,10 @@ export function findNextAvailableName(
 
 /**
  * Find client by exact name match (case-insensitive)
- * ServiceM8 enforces unique client names, so we only need to check exact matches
+ * Returns the FIRST matching client found.
  *
- * For BUSINESSES: Exact name match → use existing
- * For INDIVIDUALS: Exact name match → use existing (will add contact to it)
+ * Note: ServiceM8 allows duplicate names, so if the contact already exists,
+ * prefer using that contact's client (handled in clientLookup.ts)
  */
 export function findBestMatchingClient(
 	searchName: string,
@@ -188,16 +189,17 @@ export function findBestMatchingClient(
 /**
  * Determine the action to take based on contact and client matches
  *
- * ServiceM8 enforces unique client names, so the logic is:
- *
  * For INDIVIDUALS:
- * - Exact name match + email matches existing contact → use existing client
- * - Exact name match + no email match → create new client with numbered suffix
+ * - Matched client has existing contact with same email → use existing client
+ * - Matched client but no/different email → create new client with numbered suffix
  * - No name match → create new client
  *
  * For BUSINESSES:
  * - Exact name match → use existing business, add contact
  * - No name match → create new business
+ *
+ * Note: The matched client should already be the correct one (preferring the
+ * contact's client if email exists) - see findMatchingClientAndDetermineAction()
  */
 export interface ActionDecisionInput {
 	contactExists: boolean;

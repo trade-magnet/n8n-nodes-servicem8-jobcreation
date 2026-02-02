@@ -5,7 +5,7 @@
 export interface ServiceM8Client {
 	uuid: string;
 	name: string;
-	is_individual: number;
+	is_individual: string;
 	address: string;
 	address_street: string;
 	address_city: string;

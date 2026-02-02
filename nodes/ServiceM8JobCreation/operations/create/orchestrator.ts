@@ -34,8 +34,8 @@ export async function executeJobCreation(
 	// 1. Process input parameters
 	const input = processInput(context, itemIndex);
 
-	// 2. Look up existing contact
-	const { existingContact } = await lookupContact(
+	// 2. Look up existing contacts (all matching, not just first)
+	const { existingContact, allMatchingContacts } = await lookupContact(
 		context,
 		input.contactLookupFilter,
 		input.contactLookupField,
@@ -49,6 +49,7 @@ export async function executeJobCreation(
 		input.isBusiness,
 		input.kind,
 		existingContact,
+		allMatchingContacts,
 	);
 
 	// 4. Create client if needed (with name suffix for conflicts)
