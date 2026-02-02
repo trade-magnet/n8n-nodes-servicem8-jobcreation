@@ -1,16 +1,16 @@
 /**
  * Client Matching Logic
- * Implements fuzzy name + address matching for client deduplication
+ * Implements exact name matching (case-insensitive) for client deduplication
+ * ServiceM8 enforces unique client names, so we match by name only
  */
 
 import type {
 	ServiceM8Client,
-	AddressParts,
 	NameMatchResult,
 	MatchResult,
 	ClientMatchResult,
 } from '../types/index';
-import { normalizeForMatching, matchAddresses } from './addressUtils';
+import { normalizeForMatching } from './addressUtils';
 
 /**
  * Compare two names and return match quality
@@ -114,84 +114,90 @@ export function buildBothNameFormats(
 }
 
 /**
- * Find the best matching client from a list
- * Implements the decision matrix:
- *
- * For BUSINESSES:
- * - Exact name → use existing
- * - Partial name + exact/near address → use existing (same business, name variant)
- * - Partial name + no address match → create new
- *
- * For INDIVIDUALS:
- * - Exact name + exact address → use existing
- * - Exact name + different address → create new (different person, same name)
- * - Partial name + exact/near address → use existing
+ * Find the next available name with suffix for name conflicts
+ * e.g., if "David List" and "David List 1" exist, returns "David List 2"
  */
-export function findBestMatchingClient(
-	searchName: string,
-	searchAddress: AddressParts,
-	clients: ServiceM8Client[],
-	isBusiness: boolean,
-): ClientMatchResult {
-	let matchedClient: ServiceM8Client | null = null;
-	let matchType: MatchResult = { name: 'none', address: 'none' };
-	let matchReason = '';
+export function findNextAvailableName(
+	baseName: string,
+	existingClients: ServiceM8Client[],
+): string {
+	const normalizedBase = normalizeForMatching(baseName);
 
-	for (const client of clients) {
-		const nameMatch = matchClientName(searchName, client.name);
-		const addressMatch = matchAddresses(searchAddress, client);
+	// Find all clients with matching base name or numbered variants
+	let highestSuffix = 0;
 
-		if (nameMatch === 'exact') {
-			// EXACT name match
-			if (isBusiness) {
-				// Business: exact name always matches
-				matchedClient = client;
-				matchType = { name: 'exact', address: addressMatch };
-				matchReason = `Exact name match: "${client.name}"`;
-				break; // No need to check further
-			} else {
-				// Individual: exact name + exact address = match
-				if (addressMatch === 'exact') {
-					matchedClient = client;
-					matchType = { name: 'exact', address: 'exact' };
-					matchReason = `Exact name match: "${client.name}" with exact address`;
-					break;
-				} else {
-					// Same name but different address = different person
-					// Don't match, continue looking for a better match
-					// But record this as a potential issue
-					if (!matchedClient) {
-						matchReason = `Exact name match "${client.name}" but different address - different person`;
-					}
-				}
-			}
-		} else if (nameMatch === 'partial') {
-			// PARTIAL name match - need address to confirm
-			if (addressMatch === 'exact' || addressMatch === 'near') {
-				// Partial name + similar address = same client
-				if (!matchedClient || matchType.name !== 'exact') {
-					matchedClient = client;
-					matchType = { name: 'partial', address: addressMatch };
-					matchReason = `Partial name "${client.name}" + ${addressMatch} address match`;
-				}
-			}
-			// Partial name + different address = different client (don't match)
+	for (const client of existingClients) {
+		const normalizedClientName = normalizeForMatching(client.name);
+
+		// Check for exact base name match
+		if (normalizedClientName === normalizedBase) {
+			highestSuffix = Math.max(highestSuffix, 1);
+			continue;
+		}
+
+		// Check for numbered variants like "Name 1", "Name 2", etc.
+		// Match pattern: baseName + space + number
+		const suffixPattern = new RegExp(`^${normalizedBase}(\\d+)$`);
+		const match = normalizedClientName.match(suffixPattern);
+		if (match) {
+			const suffix = parseInt(match[1], 10);
+			highestSuffix = Math.max(highestSuffix, suffix + 1);
 		}
 	}
 
-	if (!matchedClient) {
-		matchReason = matchReason || 'No matching client found';
+	// If no conflicts, return base name; otherwise append next number
+	if (highestSuffix === 0) {
+		return baseName;
+	}
+
+	return `${baseName} ${highestSuffix}`;
+}
+
+/**
+ * Find client by exact name match (case-insensitive)
+ * ServiceM8 enforces unique client names, so we only need to check exact matches
+ *
+ * For BUSINESSES: Exact name match → use existing
+ * For INDIVIDUALS: Exact name match → use existing (will add contact to it)
+ */
+export function findBestMatchingClient(
+	searchName: string,
+	clients: ServiceM8Client[],
+): ClientMatchResult {
+	const normalizedSearch = normalizeForMatching(searchName);
+
+	for (const client of clients) {
+		const normalizedClientName = normalizeForMatching(client.name);
+
+		if (normalizedSearch === normalizedClientName) {
+			return {
+				client,
+				matchType: { name: 'exact', address: 'none' },
+				reason: `Exact name match: "${client.name}"`,
+			};
+		}
 	}
 
 	return {
-		client: matchedClient,
-		matchType,
-		reason: matchReason,
+		client: null,
+		matchType: { name: 'none', address: 'none' },
+		reason: 'No matching client found',
 	};
 }
 
 /**
  * Determine the action to take based on contact and client matches
+ *
+ * ServiceM8 enforces unique client names, so the logic is:
+ *
+ * For INDIVIDUALS:
+ * - Exact name match + email matches existing contact → use existing client
+ * - Exact name match + no email match → create new client with numbered suffix
+ * - No name match → create new client
+ *
+ * For BUSINESSES:
+ * - Exact name match → use existing business, add contact
+ * - No name match → create new business
  */
 export interface ActionDecisionInput {
 	contactExists: boolean;
@@ -208,6 +214,7 @@ export interface ActionDecisionResult {
 	reason: string;
 	needsClient: boolean;
 	needsContact: boolean;
+	needsNameSuffix: boolean;
 	clientUuid: string | null;
 }
 
@@ -216,7 +223,6 @@ export function determineAction(input: ActionDecisionInput): ActionDecisionResul
 		contactExists,
 		existingContactClientUuid,
 		matchedClient,
-		matchType,
 		matchReason,
 		isBusiness,
 		kind,
@@ -225,25 +231,25 @@ export function determineAction(input: ActionDecisionInput): ActionDecisionResul
 	let clientUuid: string | null = null;
 	let needsClient = true;
 	let needsContact = true;
+	let needsNameSuffix = false;
 
 	if (matchedClient) {
-		// We found a matching client
+		// We found a client with exact name match
 		clientUuid = matchedClient.uuid;
 
 		if (isBusiness) {
-			// BUSINESS rules: use existing if we have a match
+			// BUSINESS: exact name match → use existing, add contact
 			needsClient = false;
 		} else {
-			// INDIVIDUAL rules
-			if (matchType.name === 'exact' && matchType.address === 'exact') {
+			// INDIVIDUAL: check if contact email matches
+			if (contactExists && existingContactClientUuid === matchedClient.uuid) {
+				// Email matches existing contact on this client → use existing
 				needsClient = false;
-			} else if (matchType.name === 'exact') {
-				// Same name but different address = different person
-				needsClient = true;
-				clientUuid = null;
 			} else {
-				// Partial match
-				needsClient = false;
+				// Name matches but email doesn't → create new with suffix
+				needsClient = true;
+				needsNameSuffix = true;
+				clientUuid = null;
 			}
 		}
 	}
@@ -260,7 +266,11 @@ export function determineAction(input: ActionDecisionInput): ActionDecisionResul
 
 	if (needsClient) {
 		action = 'create_client_and_contact';
-		reason = `${kind}: ${matchReason}; creating new client and contact`;
+		if (needsNameSuffix) {
+			reason = `${kind}: ${matchReason}; name conflict - creating new client with suffix`;
+		} else {
+			reason = `${kind}: ${matchReason}; creating new client and contact`;
+		}
 	} else if (needsContact) {
 		action = 'create_contact_and_job';
 		reason = `${kind}: ${matchReason}; creating contact on existing client`;
@@ -274,6 +284,7 @@ export function determineAction(input: ActionDecisionInput): ActionDecisionResul
 		reason,
 		needsClient,
 		needsContact,
+		needsNameSuffix,
 		clientUuid,
 	};
 }

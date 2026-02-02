@@ -56,9 +56,19 @@ export async function serviceM8Request(
 		);
 		return response;
 	} catch (error) {
-		const err = error as Error;
-		throw new NodeApiError(context.getNode(), { message: err.message }, {
-			message: `ServiceM8 API error on ${endpoint}`,
+		// Extract the actual ServiceM8 error message from the response
+		const err = error as Error & { cause?: { message?: string }; response?: { body?: { message?: string } } };
+		let errorMessage = err.message;
+
+		// Try to get the actual API error message
+		if (err.cause?.message) {
+			errorMessage = err.cause.message;
+		} else if (err.response?.body?.message) {
+			errorMessage = err.response.body.message;
+		}
+
+		throw new NodeApiError(context.getNode(), { message: errorMessage }, {
+			message: `ServiceM8 API error on ${endpoint}: ${errorMessage}`,
 		});
 	}
 }
@@ -140,13 +150,25 @@ export async function createClient(
 		address_country?: string;
 	},
 ): Promise<string> {
+	// Build body with only non-empty values and is_individual as string per API docs
+	const body: Record<string, unknown> = {
+		name: data.name,
+		is_individual: String(data.is_individual),
+		active: 1,
+	};
+
+	// Only include address fields if they have values
+	if (data.address) body.address = data.address;
+	if (data.address_street) body.address_street = data.address_street;
+	if (data.address_city) body.address_city = data.address_city;
+	if (data.address_state) body.address_state = data.address_state;
+	if (data.address_postcode) body.address_postcode = data.address_postcode;
+	if (data.address_country) body.address_country = data.address_country;
+
 	const response = await serviceM8Request(context, {
 		method: 'POST',
 		endpoint: '/api_1.0/company.json',
-		body: {
-			...data,
-			active: 1,
-		},
+		body,
 		returnFullResponse: true,
 	});
 

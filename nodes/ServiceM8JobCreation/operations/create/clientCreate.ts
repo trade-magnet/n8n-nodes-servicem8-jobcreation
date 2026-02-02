@@ -4,9 +4,10 @@
  */
 
 import type { IExecuteFunctions } from 'n8n-workflow';
-import type { AddressParts } from '../../types';
+import type { AddressParts, ServiceM8Client } from '../../types';
 import { createClient, createCompanyContact } from '../../helpers/api';
 import { checkContactExistsOnClient } from './contactLookup';
+import { findNextAvailableName } from '../../helpers/clientMatcher';
 
 export interface ClientCreateInput {
 	clientName: string;
@@ -27,6 +28,7 @@ export interface ContactCreateInput {
 export interface ClientCreateResult {
 	clientUuid: string;
 	clientCreated: boolean;
+	clientName: string;
 }
 
 export interface ContactCreateResult {
@@ -36,22 +38,31 @@ export interface ContactCreateResult {
 
 /**
  * Create a new client if needed
+ * If needsNameSuffix is true, appends a number to the name to make it unique
  */
 export async function createClientIfNeeded(
 	context: IExecuteFunctions,
 	needsClient: boolean,
 	existingClientUuid: string | null,
 	input: ClientCreateInput,
+	needsNameSuffix: boolean = false,
+	allClients: ServiceM8Client[] = [],
 ): Promise<ClientCreateResult> {
 	if (!needsClient && existingClientUuid) {
 		return {
 			clientUuid: existingClientUuid,
 			clientCreated: false,
+			clientName: input.clientName,
 		};
 	}
 
+	// Generate unique name if there's a conflict
+	const clientName = needsNameSuffix
+		? findNextAvailableName(input.clientName, allClients)
+		: input.clientName;
+
 	const clientUuid = await createClient(context, {
-		name: input.clientName,
+		name: clientName,
 		is_individual: input.isIndividual,
 		address: input.clientAddress,
 		address_street: input.clientAddressParts.street,
@@ -64,6 +75,7 @@ export async function createClientIfNeeded(
 	return {
 		clientUuid,
 		clientCreated: true,
+		clientName,
 	};
 }
 

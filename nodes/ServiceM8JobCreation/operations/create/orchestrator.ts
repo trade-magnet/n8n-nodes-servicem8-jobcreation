@@ -41,18 +41,17 @@ export async function executeJobCreation(
 		input.contactLookupField,
 	);
 
-	// 3. Look up clients and determine action
-	const allClients = await lookupClients(context, input.isIndividual);
+	// 3. Look up clients and determine action (name-based matching only)
+	const allClients = await lookupClients(context);
 	const actionResult = findMatchingClientAndDetermineAction(
 		input.clientName,
-		input.clientAddressParts,
 		allClients,
 		input.isBusiness,
 		input.kind,
 		existingContact,
 	);
 
-	// 4. Create client if needed
+	// 4. Create client if needed (with name suffix for conflicts)
 	const clientResult = await createClientIfNeeded(
 		context,
 		actionResult.needsClient,
@@ -63,6 +62,8 @@ export async function executeJobCreation(
 			clientAddress: input.clientAddress,
 			clientAddressParts: input.clientAddressParts,
 		},
+		actionResult.needsNameSuffix,
+		allClients,
 	);
 
 	if (!clientResult.clientUuid) {

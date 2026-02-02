@@ -1,13 +1,13 @@
 /**
  * Client Lookup Operations
  * Find and match existing clients with decision logic
+ * Uses exact name matching (case-insensitive) since ServiceM8 enforces unique names
  */
 
 import type { IExecuteFunctions } from 'n8n-workflow';
 import type {
 	ServiceM8Client,
 	ServiceM8Contact,
-	AddressParts,
 	MatchResult,
 } from '../../types';
 import { serviceM8Request, parseArrayResponse } from '../../helpers/api';
@@ -33,16 +33,16 @@ export interface ActionResult extends ActionDecisionResult {
 }
 
 /**
- * Look up clients of a specific type (business or individual)
+ * Look up all active clients (both business and individual)
+ * We need all clients to check for name conflicts and find suffix numbers
  */
 export async function lookupClients(
 	context: IExecuteFunctions,
-	isIndividual: number,
 ): Promise<ServiceM8Client[]> {
 	const clientsResponse = await serviceM8Request(context, {
 		method: 'GET',
 		endpoint: '/api_1.0/company.json',
-		query: { $filter: `active eq 1 and is_individual eq ${isIndividual}` },
+		query: { $filter: 'active eq 1' },
 	});
 
 	return parseArrayResponse<ServiceM8Client>(clientsResponse);
@@ -50,22 +50,17 @@ export async function lookupClients(
 
 /**
  * Find the best matching client and determine action to take
+ * Uses exact name matching only (case-insensitive)
  */
 export function findMatchingClientAndDetermineAction(
 	clientName: string,
-	clientAddressParts: AddressParts,
 	allClients: ServiceM8Client[],
 	isBusiness: boolean,
 	kind: 'business' | 'person',
 	existingContact: ServiceM8Contact | null,
 ): ActionResult {
-	// Find the best matching client
-	const matchResult = findBestMatchingClient(
-		clientName,
-		clientAddressParts,
-		allClients,
-		isBusiness,
-	);
+	// Find client with exact name match
+	const matchResult = findBestMatchingClient(clientName, allClients);
 
 	// Determine what action to take
 	const actionResult = determineAction({
