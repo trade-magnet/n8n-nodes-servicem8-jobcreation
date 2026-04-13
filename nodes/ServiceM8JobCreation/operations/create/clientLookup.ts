@@ -77,22 +77,55 @@ export function findMatchingClientAndDetermineAction(
 	// The contact we'll use for action determination (might be different from existingContact)
 	let contactForAction: ServiceM8Contact | null = existingContact;
 
-	// PRIORITY 1: Search ALL matching contacts to find one on a client with matching name
-	// This handles the case where the same email exists on multiple clients
+	// PRIORITY 1: Search ALL matching contacts to find one on a client with matching name.
+	// For BUSINESSES we still require a normalized name match — same email shared across
+	// distinct businesses should remain disambiguated by name.
+	// For INDIVIDUALS (persons) the contact's company_uuid is treated as authoritative —
+	// if the same person (verified by email/phone) is already linked to a client, reuse it
+	// regardless of how the client name is formatted (e.g. "List, David" vs "David List").
 	if (allMatchingContacts.length > 0) {
 		const normalizedInputName = normalizeForMatching(clientName);
 
-		for (const contact of allMatchingContacts) {
-			const contactClient = allClients.find(c => c.uuid === contact.company_uuid);
-			if (contactClient && normalizeForMatching(contactClient.name) === normalizedInputName) {
-				// Found a contact on a client with matching name - use this one!
-				contactForAction = contact;
+		if (isBusiness) {
+			for (const contact of allMatchingContacts) {
+				const contactClient = allClients.find(c => c.uuid === contact.company_uuid);
+				if (contactClient && normalizeForMatching(contactClient.name) === normalizedInputName) {
+					contactForAction = contact;
+					matchResult = {
+						client: contactClient,
+						matchType: { name: 'exact', address: 'none' },
+						reason: `Exact name match (via existing contact): "${contactClient.name}"`,
+					};
+					break;
+				}
+			}
+		} else {
+			// Individual: prefer exact name match if available, otherwise trust contact identity
+			let nameMatched: { contact: ServiceM8Contact; client: ServiceM8Client } | null = null;
+			let identityFallback: { contact: ServiceM8Contact; client: ServiceM8Client } | null = null;
+
+			for (const contact of allMatchingContacts) {
+				const contactClient = allClients.find(c => c.uuid === contact.company_uuid);
+				if (!contactClient) continue;
+				if (normalizeForMatching(contactClient.name) === normalizedInputName) {
+					nameMatched = { contact, client: contactClient };
+					break;
+				}
+				if (!identityFallback) {
+					identityFallback = { contact, client: contactClient };
+				}
+			}
+
+			const chosen = nameMatched ?? identityFallback;
+			if (chosen) {
+				contactForAction = chosen.contact;
 				matchResult = {
-					client: contactClient,
-					matchType: { name: 'exact', address: 'none' },
-					reason: `Exact name match (via existing contact): "${contactClient.name}"`,
+					client: chosen.client,
+					matchType: { name: nameMatched ? 'exact' : 'none', address: 'none' },
+					reason: nameMatched
+						? `Exact name match (via existing contact): "${chosen.client.name}"`
+						: `Reused existing client "${chosen.client.name}" via contact identity (email/phone)`,
 				};
-				break;
 			}
 		}
 	}

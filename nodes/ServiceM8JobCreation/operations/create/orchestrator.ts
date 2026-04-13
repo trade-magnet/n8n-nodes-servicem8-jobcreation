@@ -37,8 +37,11 @@ export async function executeJobCreation(
 	// 2. Look up existing contacts (all matching, not just first)
 	const { existingContact, allMatchingContacts } = await lookupContact(
 		context,
-		input.contactLookupFilter,
-		input.contactLookupField,
+		{
+			email: input.email || null,
+			mobile: input.mobile,
+			phone: input.phone,
+		},
 	);
 
 	// 3. Look up clients and determine action (name-based matching only)
@@ -65,6 +68,7 @@ export async function executeJobCreation(
 		},
 		actionResult.needsNameSuffix,
 		allClients,
+		input.kind === 'person' ? allMatchingContacts : [],
 	);
 
 	if (!clientResult.clientUuid) {
@@ -107,89 +111,125 @@ export async function executeJobCreation(
 	);
 
 	// 6b. Fetch job to get generated job number
-	const jobData = await getJob(context, jobUuid);
+	// Once the job exists in ServiceM8, never throw — n8n's Retry on Fail would
+	// duplicate the job. Collect post-creation errors into partialFailures instead.
+	const partialFailures: string[] = [];
+	const runStep = async <T>(label: string, fallback: T, fn: () => Promise<T>): Promise<T> => {
+		try {
+			return await fn();
+		} catch (err) {
+			partialFailures.push(`${label}: ${(err as Error).message}`);
+			return fallback;
+		}
+	};
+
+	const jobData = await runStep('fetchJob', {} as Record<string, unknown>, () => getJob(context, jobUuid));
 	const jobNumber = (jobData.generated_job_id as string) || '';
 
 	// 7. Assign category
-	const categoryResult = await assignCategory(context, {
-		jobUuid,
-		enableCategory: input.enableCategory,
-		categoryDynamic: input.categoryDynamic,
-		categoryUuidInput: input.categoryUuidInput,
-		categoryNameInput: input.categoryNameInput,
-	});
+	const categoryResult = await runStep(
+		'assignCategory',
+		{ categoryAssigned: false, categoryName: '', categoryMissing: '' },
+		() => assignCategory(context, {
+			jobUuid,
+			enableCategory: input.enableCategory,
+			categoryDynamic: input.categoryDynamic,
+			categoryUuidInput: input.categoryUuidInput,
+			categoryNameInput: input.categoryNameInput,
+		}),
+	);
 
 	// 8. Assign badges
-	const badgesResult = await assignBadges(context, {
-		jobUuid,
-		enableBadges: input.enableBadges,
-		badgesDynamic: input.badgesDynamic,
-		badgeUuidsInput: input.badgeUuidsInput,
-		badgeNamesInput: input.badgeNamesInput,
-	});
+	const badgesResult = await runStep(
+		'assignBadges',
+		{ badgesAssigned: [] as string[], badgesMissing: [] as string[] },
+		() => assignBadges(context, {
+			jobUuid,
+			enableBadges: input.enableBadges,
+			badgesDynamic: input.badgesDynamic,
+			badgeUuidsInput: input.badgeUuidsInput,
+			badgeNamesInput: input.badgeNamesInput,
+		}),
+	);
 
 	// 9. Assign queue
-	const queueResult = await assignQueue(context, {
-		jobUuid,
-		enableQueue: input.enableQueue,
-		queueDynamic: input.queueDynamic,
-		queueUuidInput: input.queueUuidInput,
-		queueNameInput: input.queueNameInput,
-	});
+	const queueResult = await runStep(
+		'assignQueue',
+		{ queueAssigned: false, queueName: '', queueMissing: '' },
+		() => assignQueue(context, {
+			jobUuid,
+			enableQueue: input.enableQueue,
+			queueDynamic: input.queueDynamic,
+			queueUuidInput: input.queueUuidInput,
+			queueNameInput: input.queueNameInput,
+		}),
+	);
 
 	// 10. Upload attachments (before notifications so UUIDs can be included in emails)
-	const attachmentsResult = await uploadAttachments(
-		context,
-		itemIndex,
-		jobUuid,
-		{
-			enableAttachments: input.enableAttachments,
-			attachmentMode: input.attachmentMode,
-			attachmentUrlList: input.attachmentUrlList,
-			attachmentsInput: input.attachmentsInput,
-		},
+	const attachmentsResult = await runStep(
+		'uploadAttachments',
+		{ attachmentUuids: [] as string[], attachmentsUploaded: [] as string[], attachmentsFailed: [] as string[] },
+		() => uploadAttachments(
+			context,
+			itemIndex,
+			jobUuid,
+			{
+				enableAttachments: input.enableAttachments,
+				attachmentMode: input.attachmentMode,
+				attachmentUrlList: input.attachmentUrlList,
+				attachmentsInput: input.attachmentsInput,
+			},
+		),
 	);
 
 	// 11. Send notifications (with attachment UUIDs for email inclusion)
-	const notificationsResult = await sendNotifications(context, {
-		jobUuid,
-		enableNotifications: input.enableNotifications,
-		notificationRecipientsInput: input.notificationRecipientsInput,
-		clientName: input.clientName,
-		jobAddress: input.jobAddress,
-		jobDetails: input.jobDetails,
-		attachmentUuids: attachmentsResult.attachmentUuids,
-	});
+	const notificationsResult = await runStep(
+		'sendNotifications',
+		{ emailsSent: 0, smsSent: 0 },
+		() => sendNotifications(context, {
+			jobUuid,
+			enableNotifications: input.enableNotifications,
+			notificationRecipientsInput: input.notificationRecipientsInput,
+			clientName: input.clientName,
+			jobAddress: input.jobAddress,
+			jobDetails: input.jobDetails,
+			attachmentUuids: attachmentsResult.attachmentUuids,
+		}),
+	);
 
 	// 12. Create notes
-	const notesResult = await createNotes(
-		context,
-		jobUuid,
-		{
+	const notesResult = await runStep(
+		'createNotes',
+		{ systemNoteAdded: false, customNoteAdded: false, systemNoteUuid: '', customNoteUuid: '' },
+		() => createNotes(
+			context,
 			jobUuid,
-			clientCreated: clientResult.clientCreated,
-			contactCreated: contactResult.contactCreated,
-			matchReason: actionResult.matchReason,
-			enableCategory: input.enableCategory,
-			categoryAssigned: categoryResult.categoryAssigned,
-			categoryName: categoryResult.categoryName,
-			categoryMissing: categoryResult.categoryMissing,
-			enableBadges: input.enableBadges,
-			badgesAssigned: badgesResult.badgesAssigned,
-			badgesMissing: badgesResult.badgesMissing,
-			enableQueue: input.enableQueue,
-			queueAssigned: queueResult.queueAssigned,
-			queueName: queueResult.queueName,
-			queueMissing: queueResult.queueMissing,
-			enableNotifications: input.enableNotifications,
-			emailsSent: notificationsResult.emailsSent,
-			smsSent: notificationsResult.smsSent,
-			enableAttachments: input.enableAttachments,
-			attachmentsUploaded: attachmentsResult.attachmentsUploaded,
-			attachmentsFailed: attachmentsResult.attachmentsFailed,
-		},
-		input.enableCustomNote,
-		input.customNoteContent,
+			{
+				jobUuid,
+				clientCreated: clientResult.clientCreated,
+				contactCreated: contactResult.contactCreated,
+				matchReason: actionResult.matchReason,
+				enableCategory: input.enableCategory,
+				categoryAssigned: categoryResult.categoryAssigned,
+				categoryName: categoryResult.categoryName,
+				categoryMissing: categoryResult.categoryMissing,
+				enableBadges: input.enableBadges,
+				badgesAssigned: badgesResult.badgesAssigned,
+				badgesMissing: badgesResult.badgesMissing,
+				enableQueue: input.enableQueue,
+				queueAssigned: queueResult.queueAssigned,
+				queueName: queueResult.queueName,
+				queueMissing: queueResult.queueMissing,
+				enableNotifications: input.enableNotifications,
+				emailsSent: notificationsResult.emailsSent,
+				smsSent: notificationsResult.smsSent,
+				enableAttachments: input.enableAttachments,
+				attachmentsUploaded: attachmentsResult.attachmentsUploaded,
+				attachmentsFailed: attachmentsResult.attachmentsFailed,
+			},
+			input.enableCustomNote,
+			input.customNoteContent,
+		),
 	);
 
 	// Build output
@@ -250,5 +290,6 @@ export async function executeJobCreation(
 			clientAddress: input.clientAddress,
 		},
 		createdRecords,
+		partialFailures,
 	};
 }

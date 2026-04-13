@@ -4,6 +4,7 @@
  */
 
 import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import { executeJobCreation, executeJobUpdate } from './operations';
 import { createEmptyExecutionResult, createEmptyUpdateResult } from './types';
 
@@ -40,7 +41,8 @@ export async function execute(
 					pairedItem: i,
 				});
 			} else {
-				throw error;
+				if (error instanceof NodeOperationError) throw error;
+				throw new NodeOperationError(this.getNode(), error as Error, { itemIndex: i });
 			}
 		}
 	}

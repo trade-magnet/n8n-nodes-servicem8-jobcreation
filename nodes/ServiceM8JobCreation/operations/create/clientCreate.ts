@@ -4,7 +4,7 @@
  */
 
 import type { IExecuteFunctions } from 'n8n-workflow';
-import type { AddressParts, ServiceM8Client } from '../../types';
+import type { AddressParts, ServiceM8Client, ServiceM8Contact } from '../../types';
 import { createClient, createCompanyContact } from '../../helpers/api';
 import { checkContactExistsOnClient } from './contactLookup';
 import { findNextAvailableName } from '../../helpers/clientMatcher';
@@ -47,6 +47,7 @@ export async function createClientIfNeeded(
 	input: ClientCreateInput,
 	needsNameSuffix: boolean = false,
 	allClients: ServiceM8Client[] = [],
+	personIdentityContacts: ServiceM8Contact[] = [],
 ): Promise<ClientCreateResult> {
 	if (!needsClient && existingClientUuid) {
 		return {
@@ -54,6 +55,21 @@ export async function createClientIfNeeded(
 			clientCreated: false,
 			clientName: input.clientName,
 		};
+	}
+
+	// Belt-and-braces: for individuals, if any matching contact already lives on a
+	// known client, reuse that client rather than creating a suffixed duplicate.
+	if (needsNameSuffix && personIdentityContacts.length > 0) {
+		for (const contact of personIdentityContacts) {
+			const existing = allClients.find(c => c.uuid === contact.company_uuid);
+			if (existing) {
+				return {
+					clientUuid: existing.uuid,
+					clientCreated: false,
+					clientName: existing.name,
+				};
+			}
+		}
 	}
 
 	// Generate unique name if there's a conflict

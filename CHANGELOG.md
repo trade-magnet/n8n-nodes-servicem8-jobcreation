@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-14
+
+### Fixed
+
+- **Stopped Retry on Fail from creating duplicate jobs**
+  - Once the job is created in ServiceM8, post-creation sub-steps (category, badges, queue, attachments, notifications, notes) no longer throw — failures are collected into a new `partialFailures` array on the output and returned as success.
+  - Previously, a failure in any post-creation step caused n8n to retry the entire node, creating 2–3 duplicate jobs in ServiceM8.
+  - Pre-creation failures (auth, network, validation) still throw and remain retryable.
+- **Stopped duplicate "Name 1", "Name 2" clients for individuals**
+  - For individuals (no business name), an existing contact matched by email/mobile/phone is now treated as authoritative — the contact's existing client is reused regardless of differences in name formatting (e.g. "List, David" vs "David List").
+  - Contact lookup now queries email AND mobile AND phone in a single OR filter, with client-side case-insensitive comparison, so case differences and email-vs-phone-only stored contacts no longer miss.
+  - Added a final safety check in client creation: even if upstream logic asks for a numbered suffix, if any matching contact already lives on a known client we reuse that client instead of creating a duplicate.
+
+### Added
+
+- `partialFailures: string[]` on the create-job output. Empty when everything succeeded; populated with `"<step>: <message>"` entries for any post-creation step that failed.
+
 ## [1.2.0] - 2026-02-03
 
 ### Fixed
