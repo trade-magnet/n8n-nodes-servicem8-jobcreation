@@ -75,6 +75,7 @@ export interface ExecutionResult {
 	summary: ExecutionSummary;
 	debug: ExecutionDebug;
 	createdRecords: CreatedRecords;
+	partialFailures: string[];
 }
 
 // ============= Update Job Results =============
@@ -163,6 +164,7 @@ export function createEmptyExecutionResult(): ExecutionResult {
 		summary: createEmptySummary(),
 		debug: createEmptyDebug(),
 		createdRecords: createEmptyCreatedRecords(),
+		partialFailures: [],
 	};
 }
 
