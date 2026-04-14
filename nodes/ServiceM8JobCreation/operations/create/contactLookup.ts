@@ -41,7 +41,9 @@ export async function lookupContact(
 		return { existingContact: null, allMatchingContacts: [], foundByField: null };
 	}
 
-	const filter = `active eq 1 and (${clauses.join(' or ')})`;
+	const filter = clauses.length === 1
+		? `active eq 1 and ${clauses[0]}`
+		: `active eq 1 and (${clauses.join(' or ')})`;
 
 	const contactResponse = await serviceM8Request(context, {
 		method: 'GET',
