@@ -32,26 +32,26 @@ export async function lookupContact(
 	const mobile = identifiers.mobile ? identifiers.mobile.trim() : null;
 	const phone = identifiers.phone ? identifiers.phone.trim() : null;
 
-	const clauses: string[] = [];
-	if (email) clauses.push(`email eq '${escapeOData(email)}'`);
-	if (mobile) clauses.push(`mobile eq '${escapeOData(mobile)}'`);
-	if (phone) clauses.push(`phone eq '${escapeOData(phone)}'`);
+	// ServiceM8 OData does not reliably support `or` in filters, so we issue one
+	// request per provided identifier and merge results client-side.
+	const queries: Array<{ field: 'email' | 'mobile' | 'phone'; value: string }> = [];
+	if (email) queries.push({ field: 'email', value: email });
+	if (mobile) queries.push({ field: 'mobile', value: mobile });
+	if (phone) queries.push({ field: 'phone', value: phone });
 
-	if (clauses.length === 0) {
+	if (queries.length === 0) {
 		return { existingContact: null, allMatchingContacts: [], foundByField: null };
 	}
 
-	const filter = clauses.length === 1
-		? `active eq 1 and ${clauses[0]}`
-		: `active eq 1 and (${clauses.join(' or ')})`;
-
-	const contactResponse = await serviceM8Request(context, {
-		method: 'GET',
-		endpoint: '/api_1.0/companycontact.json',
-		query: { $filter: filter },
-	});
-
-	const raw = parseArrayResponse<ServiceM8Contact>(contactResponse);
+	const raw: ServiceM8Contact[] = [];
+	for (const q of queries) {
+		const response = await serviceM8Request(context, {
+			method: 'GET',
+			endpoint: '/api_1.0/companycontact.json',
+			query: { $filter: `active eq 1 and ${q.field} eq '${escapeOData(q.value)}'` },
+		});
+		raw.push(...parseArrayResponse<ServiceM8Contact>(response));
+	}
 
 	// Client-side case-insensitive filter + dedupe by uuid
 	const seen = new Set<string>();
